@@ -16,14 +16,18 @@ import (
 	"time"
 )
 
+var debug bool
+
 func init() {
 	log.SetFlags(0)
+	debug = false
 }
 
 func pre(p *gone.Perc) {
 	const (
-		Nsens  = 25
-		Nass   = 9
+		Nsens  = 256 * 256
+		Msens  = 16
+		Nass   = 1024
 		Nreact = 2
 	)
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -31,7 +35,7 @@ func pre(p *gone.Perc) {
 	var socache []*gone.Out
 	for i := 0; i < Nsens; i++ {
 		next := &gone.Sens{Id: "s." + strconv.Itoa(i)}
-		outs := make([]*gone.Out, rnd.Intn(Nass)+1)
+		outs := make([]*gone.Out, rnd.Intn(Msens)+1)
 		for j := 0; j < len(outs); j++ {
 			w := 0
 			if rnd.Intn(2) == 0 {
@@ -115,22 +119,23 @@ func pre(p *gone.Perc) {
 			}
 		}
 	}
-
-	var dump func(*gone.In, string)
-	dump = func(in *gone.In, indent string) {
-		for _, r := range in.Io {
-			log.Println(indent, r.Owner+":"+r.Id)
+	if debug {
+		var dump func(*gone.In, string)
+		dump = func(in *gone.In, indent string) {
+			for _, r := range in.Io {
+				log.Println(indent, r.Owner+":"+r.Id)
+			}
 		}
-	}
 
-	for _, r := range p.Ass {
-		log.Println(r.Id)
-		dump(r.In, "  ")
-	}
+		for _, r := range p.Ass {
+			log.Println(r.Id)
+			dump(r.In, "  ")
+		}
 
-	for _, r := range p.React {
-		log.Println(r.Id)
-		dump(r.In, "  ")
+		for _, r := range p.React {
+			log.Println(r.Id)
+			dump(r.In, "  ")
+		}
 	}
 }
 
@@ -200,7 +205,7 @@ func main() {
 	} else {
 		pre(p)
 	}
-	//pre(p) //debug only
+	pre(p) //debug only
 
 	var m interface{}
 	m = do(gone.Load(p), []int{
