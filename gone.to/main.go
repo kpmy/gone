@@ -15,6 +15,7 @@ const (
 )
 
 func init() {
+	assert.For(MaxSensOut <= Nass, 20)
 	log.SetFlags(0)
 }
 
