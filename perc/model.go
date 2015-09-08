@@ -25,7 +25,7 @@ type Layer struct {
 }
 
 func (l *Layer) String() string {
-	return fmt.Sprint(l.Nodes)
+	return fmt.Sprint(l.Nodes, l.Next)
 }
 
 func NewNode() *Node {
