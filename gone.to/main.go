@@ -1,14 +1,18 @@
 package main
 
 import (
-	"encoding/json"
 	"github.com/kpmy/ypk/assert"
-	"gone/perc"
-	"gone/perc/std"
-	"io"
+	"github.com/kpmy/ypk/fn"
+	"gone/model"
+	"gone/model/proc"
+	"gone/model/std"
+	"image"
+	"image/color"
+	_ "image/png"
 	"log"
 	"math/rand"
 	"os"
+	"time"
 )
 
 const (
@@ -23,97 +27,113 @@ func init() {
 	log.SetFlags(0)
 }
 
-type Link struct {
-	NodeId int `json:"node"`
-	LinkId int `json:"out"`
-}
-
-type NodeStruct struct {
-	Outs []int  `json:"out"`
-	Ins  []Link `json:"in,omitempty"`
-}
-
-type LayerStruct struct {
-	Nodes []*NodeStruct `json:"node"`
-}
-
-func Store(wr io.Writer, first *model.Layer) error {
-	res := make([]*LayerStruct, 0)
-	for l := first; l != nil; l = l.Next {
-		next := &LayerStruct{}
-		for _, n := range l.Nodes {
-			node := &NodeStruct{}
-			for _, w := range n.Weights {
-				node.Outs = append(node.Outs, w)
-			}
-			for k, _ := range n.In {
-				link := Link{NodeId: k.NodeId, LinkId: k.LinkId}
-				node.Ins = append(node.Ins, link)
-			}
-			next.Nodes = append(next.Nodes, node)
-		}
-		res = append(res, next)
-	}
-	return json.NewEncoder(wr).Encode(res)
-}
-
-func Load(rd io.Reader) (ret *model.Layer, err error) {
-	ll := make([]LayerStruct, 0)
-	if err = json.NewDecoder(rd).Decode(ll); err == nil {
-		var this *model.Layer
-		for _, l := range ll {
-			if ret == nil {
-				this = &model.Layer{}
-				ret = this
-			} else {
-				this.Next = &model.Layer{}
-				this = this.Next
-			}
-			for _, n := range l.Nodes {
-				node := model.NewNode()
-				for _, w := range n.Outs {
-					node.Weights = append(node.Weights, w)
-				}
-				node.Out = make([]interface{}, len(node.Weights))
-				for _, l := range n.Ins {
-					link := model.Link{LinkId: l.LinkId, NodeId: l.NodeId}
-					node.In[link] = nil
-				}
-				this.Nodes = append(this.Nodes, node)
-			}
-		}
-	}
-	return
-}
-
-func main() {
-	s := std.New(Nsens, MaxSensOut, func() int {
-		x := rand.Intn(2)
+func generate() *model.Layer {
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+	s := std.New(proc.Sensoric, Nsens, MaxSensOut, func() int {
+		x := rnd.Intn(2)
 		if x == 0 {
 			return 1
 		} else {
 			return -1
 		}
 	})
-	a := std.New(Nass, Nreact, func() int { return rand.Intn(201) - 100 })
-	r := std.New(Nreact, 1, nil)
+	a := std.New(proc.Associative, Nass, Nreact, func() int { return rnd.Intn(201) - 100 })
+	r := std.New(proc.Reactive, Nreact, 1, nil)
 
 	std.Join(s, a)
 	std.Join(a, r)
+	return s
+}
 
-	log.Println(s)
+const name = "pc"
 
-	if f, err := os.Create("0.pc"); err == nil {
-		Store(f, s)
-		f.Close()
+func main() {
+	var s, r *model.Layer
+	if _, err := os.Stat(name); os.IsNotExist(err) {
+		s = generate()
+
+		if f, err := os.Create(name); err == nil {
+			if err := std.Store(f, s); err != nil {
+				log.Fatal(err)
+			}
+			f.Close()
+		}
+	} else {
+		log.Println("file exists")
 	}
 
-	if f, err := os.Open("0.pc"); err == nil {
-		if s, err = Load(f); err != nil {
+	if f, err := os.Open(name); err == nil {
+		defer f.Close()
+		if s, err = std.Load(f); err != nil {
+			log.Fatal(err)
+		}
+	}
+	white := color.RGBA{R: 0xff, G: 0xFF, B: 0xFF, A: 0xFF}
+	if fi, err := os.Open("0.png"); err == nil {
+		if i, _, err := image.Decode(fi); err == nil {
+			j := 0
+			log.Println("image", i.Bounds())
+			for y := i.Bounds().Min.Y; y < i.Bounds().Max.Y; y++ {
+				for x := i.Bounds().Min.X; x < i.Bounds().Max.X; x++ {
+					c := i.At(x, y)
+					if c == white {
+						s.Nodes[j].In[model.Link{NodeId: 0, LinkId: 0}] = 1
+					} else {
+						s.Nodes[j].In[model.Link{NodeId: 0, LinkId: 0}] = 0
+					}
+					j++
+				}
+			}
+
+		} else {
+			log.Fatal(err)
+		}
+	} else {
+		log.Fatal(err)
+	}
+
+	/* for _, n := range s.Nodes {
+		n.In[model.Link{NodeId: 0, LinkId: 0}] = rand.Intn(2)
+	} */
+	t := make([]int, Nreact)
+	for i := 0; i < len(t); i++ {
+		t[i] = -1
+	}
+	t[0] = 1
+
+	for stop := false; !stop; { //autolearn for t pattern
+		for l := s; !fn.IsNil(l); l = l.Next {
+			proc.Process(l)
+			if l.Next != nil {
+				proc.Transfer(l)
+			} else {
+				r = l
+			}
+		}
+		a := make([]int, Nreact)
+		for i, n := range r.Nodes {
+			a[i] = n.Out[0].(int)
+		}
+		log.Println(t)
+		log.Println(a)
+		stop = true
+		for i, _ := range t {
+			switch {
+			case t[i] == 1 && a[i] == 1: //ok
+			case t[i] == 1 && a[i] != t[i]:
+				std.Update(s.Next, r.Nodes[i].In, 1)
+				stop = false
+			case t[i] == -1 && a[i] != t[i]:
+				std.Update(s.Next, r.Nodes[i].In, -1)
+				stop = false
+			}
+		}
+	}
+
+	if f, err := os.Create(name + ".0"); err == nil {
+		if err := std.Store(f, s); err != nil {
 			log.Fatal(err)
 		}
 		f.Close()
 	}
-
-	log.Println(s)
 }

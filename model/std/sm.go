@@ -2,12 +2,12 @@ package std
 
 import (
 	"github.com/kpmy/ypk/assert"
-	"gone/perc"
+	"gone/model"
 	"math/rand"
 )
 
-func New(nn, no int, w_fn func() int) (ret *model.Layer) {
-	ret = &model.Layer{}
+func New(role string, nn, no int, w_fn func() int) (ret *model.Layer) {
+	ret = &model.Layer{Role: role}
 	for i := 0; i < nn; i++ {
 		next := model.NewNode()
 		next.Out = make([]interface{}, rand.Intn(no)+1)
@@ -53,4 +53,10 @@ func Join(in *model.Layer, out *model.Layer) {
 		}
 	}
 	in.Next = out
+}
+
+func Update(l *model.Layer, links map[model.Link]interface{}, dw int) {
+	for k, _ := range links {
+		l.Nodes[k.NodeId].Weights[k.LinkId] += dw
+	}
 }

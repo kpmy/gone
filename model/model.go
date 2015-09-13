@@ -16,11 +16,12 @@ type Node struct {
 }
 
 func (n *Node) String() string {
-	return fmt.Sprint("<", n.In, "->", len(n.Out), ">")
+	return fmt.Sprint("<", len(n.In), "->", len(n.Out), ">")
 }
 
 type Layer struct {
 	Nodes []*Node
+	Role  string
 	Next  *Layer
 }
 
